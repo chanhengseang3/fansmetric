@@ -27,6 +27,7 @@ export function AnalyticsTab() {
   const stats = useMonthStats(accounts.data);
 
   const months = useMemo(() => lastMonths(6), []);
+  const accountIds = (accounts.data ?? []).map((a) => a.id);
   const payoutCreator = activeList.find((c) => String(c.id) === payoutId);
   const payout = useAsync(async () => {
     const { startDate, endDate } = monthRange(months);
@@ -34,8 +35,9 @@ export function AnalyticsTab() {
       const txs = await getCreatorTransactions(payoutCreator.id, { dateFrom: startDate, dateTo: endDate });
       return payoutSeriesForCreator(txs.items, months, creatorSplit(payoutCreator).agency);
     }
-    return payoutSeriesFromAnalytics(await getCreatorsAnalytics(startDate, endDate), months);
-  }, [payoutCreator?.id, months]);
+    if (!accountIds.length) return undefined;
+    return payoutSeriesFromAnalytics(await getCreatorsAnalytics(startDate, endDate, accountIds), months);
+  }, [payoutCreator?.id, months, accountIds.join(',')]);
 
   // all-time summary, optionally for one creator
   const selected = list.find((c) => String(c.id) === summaryId);

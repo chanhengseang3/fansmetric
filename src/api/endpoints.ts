@@ -25,20 +25,25 @@ const paged = <T,>(items: T[]): Paged<T> => ({ items, total: items.length, curre
 export const getMe = () => (isDemo() ? later(demo.demoMe) : apiGet<AgenciesResponse>('agencies'));
 
 export const getAccounts = async () =>
-  isDemo() ? later(demo.demoAccounts) : ((await apiGet<AccountsResponse>('accounts')).getSavingsAccounts ?? []);
+  isDemo()
+    ? later(demo.demoAccounts)
+    : ((await apiGet<AccountsResponse>('accounts')).getSavingsAccounts ?? []).filter((a) => a.status !== 'CLOSED');
 
 export const getAccountTransactions = async (accountId: number, q: { limit?: number; startDate?: string; endDate?: string } = {}) =>
   isDemo()
     ? later(demo.demoAccountTransactions(accountId, q))
     : (await apiGet<AccountTransactionsResponse>(`accounts/${accountId}/transactions`, q)).getAccountsHistory;
 
-export const getAccountsAnalytics = (startDate: string, endDate: string) =>
+// The middleware returns nothing unless accountIds is sent explicitly.
+export const getAccountsAnalytics = (startDate: string, endDate: string, accountIds: number[]) =>
   isDemo()
     ? later(demo.demoAccountsAnalytics(startDate, endDate))
-    : apiGet<DailyAccountAnalytics[]>('agencies/me/accounts/analytics', { startDate, endDate });
+    : apiGet<DailyAccountAnalytics[]>('agencies/me/accounts/analytics', { startDate, endDate, accountIds: accountIds.join(',') });
 
-export const getCreatorsAnalytics = (startDate: string, endDate: string) =>
-  isDemo() ? later(demo.demoCreatorsAnalytics()) : apiGet<CreatorsAnalytics>('agencies/me/creators/analytics', { startDate, endDate });
+export const getCreatorsAnalytics = (startDate: string, endDate: string, accountIds: number[]) =>
+  isDemo()
+    ? later(demo.demoCreatorsAnalytics())
+    : apiGet<CreatorsAnalytics>('agencies/me/creators/analytics', { startDate, endDate, accountIds: accountIds.join(',') });
 
 export const getCreators = () => (isDemo() ? later(paged(demo.demoCreators)) : apiGet<Paged<Creator>>('creators', { page: 1, limit: 200 }));
 

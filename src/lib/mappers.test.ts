@@ -59,6 +59,10 @@ describe('creators', () => {
     expect(creatorStatus(creator())).toBe('setup_required');
   });
 
+  it('is pending while SUBBAL status is PENDING, even with a sub-balance record', () => {
+    expect(creatorStatus(creator({ creatorId: '518', creatorSubAccountId: '700', status: 'PENDING' }))).toBe('pending_signature');
+  });
+
   it('totals only active creators but counts everyone', () => {
     const t = creatorTotals([
       creator({ creatorId: '1', totalAmountReceived: 2500, commissionEarned: 500 }),
@@ -94,6 +98,14 @@ describe('months & analytics', () => {
 
   it('sums incoming creator payments per month, ignoring debits', () => {
     expect(monthlyIncome(txs, months)).toEqual([0, 0, 0, 0, 100, 300]);
+  });
+
+  it('reads direction from DEPOSIT/WITHDRAWAL, since SUBBAL amounts are always positive', () => {
+    const live: CreatorTransaction[] = [
+      { transactionId: 'x', transactionDate: '2026-10-11', amount: 7270, transactionType: 'DEPOSIT', subject: 'Received from OF' },
+      { transactionId: 'y', transactionDate: '2026-10-11', amount: 3635, transactionType: 'WITHDRAWAL', subject: 'Creator Earnings' },
+    ];
+    expect(monthlyIncome(live, months)[5]).toBe(7270);
   });
 
   it('splits a single creator payout by their agency %', () => {
@@ -152,11 +164,17 @@ describe('accounts & transactions', () => {
       amount: 192,
       typeOf: 'DEBIT',
       createdAt: '2026-09-16T10:00:00Z',
-      transactionType: 'PAY_CHARGE',
+      transactionType: 'WITHDRAWAL',
       paymentDetail: { reference: null, paymentType: { name: 'ACH' } },
     };
-    expect(toTxRow(t, 'US Creators Income')).toMatchObject({ title: 'Pay charge', sub: 'ACH', account: 'US Creators Income', amount: -192 });
-    expect(toTxRow({ ...t, typeOf: 'CREDIT', paymentDetail: { reference: 'Incoming ACH from OF' } }).amount).toBe(192);
+    expect(toTxRow(t, 'US Creators Income')).toMatchObject({ title: 'Withdrawal', sub: 'ACH', account: 'US Creators Income', amount: -192 });
+    expect(toTxRow({ ...t, transactionType: 'DEPOSIT', paymentDetail: { reference: 'Incoming ACH from OF' } }).amount).toBe(192);
+  });
+
+  it('signs staging rows (numeric typeOf, positive amount) by transactionType', () => {
+    const t: AccountTransaction = { id: '599', runningBalance: 0, amount: 7500, typeOf: 2, createdAt: '2026-10-28', transactionType: 'WITHDRAWAL' };
+    expect(toTxRow(t).amount).toBe(-7500);
+    expect(toTxRow({ ...t, typeOf: 1, transactionType: 'DEPOSIT' }).amount).toBe(7500);
   });
 });
 

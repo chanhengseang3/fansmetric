@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isoDate, pctChange } from '../lib/format';
-import { balanceAt, creatorSplit, creatorStatus, sum, sumAnalytics } from '../lib/mappers';
+import { balanceAt, creatorSplit, creatorStatus, isCredit, sum, sumAnalytics } from '../lib/mappers';
 import { demoAccounts, demoAccountsAnalytics, demoAccountTransactions, demoCreatorDetail, demoCreators } from './demo';
 
 describe('demo data reproduces the sample page', () => {
@@ -31,7 +31,7 @@ describe('demo data reproduces the sample page', () => {
 
     const incoming = demoAccounts
       .flatMap((a) => demoAccountTransactions(a.id, { startDate: monthStart, limit: 500 }).select)
-      .filter((t) => t.typeOf === 'CREDIT');
+      .filter(isCredit);
     expect(incoming).toHaveLength(26);
   });
 });

@@ -20,6 +20,8 @@ export function creatorName(c: Pick<Creator, 'displayName' | 'firstName' | 'last
 
 /** A creator is active once the middleware has a DynamoDB mandate record (sub-balance) for them. */
 export function creatorStatus(c: Creator): CreatorStatus {
+  // the mandate record exists before signing, so PENDING must win over creatorId
+  if ((c.status ?? '').toUpperCase() === 'PENDING') return 'pending_signature';
   if (c.creatorSubAccountId || c.creatorId) return 'active';
   return c.mandateSentDate ? 'pending_signature' : 'setup_required';
 }
@@ -85,10 +87,11 @@ export function payoutSeriesFromAnalytics(data: CreatorsAnalytics, months: Month
   };
 }
 
-function isCredit(t: Pick<CreatorTransaction, 'transactionType' | 'amount'>) {
+/** SUBBAL amounts are always positive; direction comes from `transactionType`. */
+export function isCredit(t: { transactionType?: string | null; amount: number }) {
   const type = (t.transactionType ?? '').toUpperCase();
-  if (type === 'CREDIT') return true;
-  if (type === 'DEBIT') return false;
+  if (type === 'DEPOSIT' || type === 'CREDIT') return true;
+  if (type === 'WITHDRAWAL' || type === 'DEBIT') return false;
   return t.amount >= 0;
 }
 
@@ -171,7 +174,7 @@ export interface TxRow {
 }
 
 export function toTxRow(t: AccountTransaction, accountLabel?: string): TxRow {
-  const credit = (t.typeOf ?? '').toUpperCase() === 'CREDIT';
+  const credit = isCredit(t);
   const pd = t.paymentDetail;
   const title =
     pd?.reference ||

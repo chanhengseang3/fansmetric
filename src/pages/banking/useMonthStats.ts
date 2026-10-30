@@ -2,7 +2,7 @@ import { getAccountsAnalytics, getAccountTransactions } from '../../api/endpoint
 import type { SavingsAccount } from '../../api/types';
 import { useAsync } from '../../hooks/useAsync';
 import { isoDate, pctChange } from '../../lib/format';
-import { balanceAt, sumAnalytics } from '../../lib/mappers';
+import { balanceAt, isCredit, sumAnalytics } from '../../lib/mappers';
 
 export interface MonthStats {
   income: number;
@@ -26,7 +26,7 @@ export function useMonthStats(accounts: SavingsAccount[] | undefined) {
     const today = isoDate(now);
 
     const [daily, txLists] = await Promise.all([
-      getAccountsAnalytics(lastMonthStart, today),
+      getAccountsAnalytics(lastMonthStart, today, accounts.map((a) => a.id)),
       Promise.all(accounts.map((a) => getAccountTransactions(a.id, { startDate: monthStart, endDate: today, limit: 500 }))),
     ]);
 
@@ -44,7 +44,7 @@ export function useMonthStats(accounts: SavingsAccount[] | undefined) {
       lastMonthNet,
       netChangePct: pctChange(net, lastMonthNet),
       balanceChangePct: balanceNow != null && balanceThen != null ? pctChange(balanceNow, balanceThen) : null,
-      incomingCount: txLists.flatMap((l) => l.select).filter((t) => (t.typeOf ?? '').toUpperCase() === 'CREDIT').length,
+      incomingCount: txLists.flatMap((l) => l.select).filter(isCredit).length,
     };
   }, [ids]);
 }

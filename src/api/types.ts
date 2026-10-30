@@ -20,9 +20,9 @@ export interface AppUser {
 export interface Agency {
   id: number;
   displayName: string;
-  legalForm?: string;
+  legalForm?: number | string;
   avatarUrl?: string | null;
-  status?: string;
+  status?: number | string;
 }
 
 export interface AgenciesResponse {
@@ -53,7 +53,7 @@ export interface AccountTransaction {
   id: string;
   runningBalance: number;
   amount: number;
-  typeOf: 'CREDIT' | 'DEBIT' | string;
+  typeOf: number | string; // numeric code on staging; direction is transactionType
   createdAt: string;
   valueDate?: string;
   account?: { id: string; accountNumber: string; nickName?: string | null };
