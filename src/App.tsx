@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { SignInForm } from './auth/SignInForm';
 import { useSession } from './auth/useSession';
 import { Sidebar, type PageId } from './components/Sidebar';
-import { useToast } from './components/Toast';
 import { Topbar } from './components/Topbar';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { BankingPage } from './pages/banking/BankingPage';
@@ -32,7 +30,6 @@ function useTheme() {
 
 export function App() {
   const session = useSession();
-  const toast = useToast();
   const toggleTheme = useTheme();
   const [page, setPage] = useState<{ id: PageId; label: string | null; key: string | null }>({
     id: 'analytics',
@@ -46,16 +43,9 @@ export function App() {
   }, []);
   const openBanking = useCallback(() => navigate('banking', null, 'banking'), [navigate]);
 
-  if (!session) {
-    return (
-      <div className="login-wrap">
-        <SignInForm onSignedIn={() => toast('Signed in to SUBBAL')} />
-      </div>
-    );
-  }
-
   return (
-    <BankingDataProvider>
+    // remount the SUBBAL data layer on sign-in / sign-out
+    <BankingDataProvider key={session ? 'subbal' : 'signed-out'}>
       <div className="app">
         <Sidebar activeKey={page.key} onNavigate={navigate} />
         <div className="main">

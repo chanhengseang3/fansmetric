@@ -638,7 +638,7 @@
   .notif-item .neg{color:var(--red);font-weight:600;white-space:nowrap;}
   .notif-empty{padding:10px;margin:0;}
 
-  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px;}
+  .banking-signin{display:flex;justify-content:center;padding:24px 0;}
   .login-card{width:100%;max-width:400px;padding:26px 26px 22px;}
   .login-card h2{margin:6px 0 4px;font-size:19px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
   .login-card .form-row{margin-bottom:12px;}

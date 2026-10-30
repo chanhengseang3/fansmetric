@@ -3,7 +3,8 @@
 FansMetric dashboard with **Banking, powered by SUBBAL**. It's a React (Vite + TypeScript) port of
 `docs/samples/FansMetric.html`, wired to the [Subbal Middleware](../subbal-middleware) API.
 
-The app opens on a SUBBAL sign-in screen. After signing in, every Banking screen loads live data:
+Banking has its own SUBBAL sign-in, shown inside the Banking page (separate from the FansMetric login).
+After signing in, every Banking screen loads live data:
 balances, transactions and statements; creators, splits and mandates; transfers (with fee quote,
 attachments and employee-card funding); opening accounts; analytics; and the notifications bell.
 

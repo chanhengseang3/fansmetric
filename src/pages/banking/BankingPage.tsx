@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { SignInForm } from '../../auth/SignInForm';
+import { useSession } from '../../auth/useSession';
 import { Icon } from '../../components/icons';
+import { useToast } from '../../components/Toast';
 import { AccountsTab } from './AccountsTab';
 import { AnalyticsTab } from './AnalyticsTab';
 import { useBanking } from './BankingData';
@@ -20,7 +23,42 @@ const TABS: { id: BankingTab; label: string; lock?: boolean }[] = [
   { id: 'statements', label: 'Statements' },
 ];
 
+function BankingHeader({ dot, status }: { dot: string; status: string }) {
+  return (
+    <div className="page-header">
+      <div>
+        <h1>
+          Banking{' '}
+          <span className="badge-subbal">
+            <span className="dot-mark"></span>Powered by SUBBAL
+          </span>
+        </h1>
+        <p className="page-sub">Create creator sub-balances, automate revenue splits, and manage payouts — without leaving FansMetric.</p>
+      </div>
+      <div className="conn-status">
+        <span className={'dot ' + dot}></span>
+        {status}
+      </div>
+    </div>
+  );
+}
+
+/** Banking needs its own SUBBAL sign-in, separate from the FansMetric login. */
 export function BankingPage() {
+  const session = useSession();
+  const toast = useToast();
+  if (session) return <BankingTabs />;
+  return (
+    <section className="page active">
+      <BankingHeader dot="dot-amber" status="Not connected" />
+      <div className="banking-signin">
+        <SignInForm onSignedIn={() => toast('Signed in to SUBBAL')} />
+      </div>
+    </section>
+  );
+}
+
+function BankingTabs() {
   const { me } = useBanking();
   const [tab, setTab] = useState<BankingTab>('overview');
   // tabs mount on first visit and stay mounted (keeps wizard state, avoids refetching)
@@ -40,7 +78,7 @@ export function BankingPage() {
       ? { dot: 'dot-amber', text: 'Connecting…' }
       : { dot: 'dot-green', text: `Connected · ${agencyName ?? 'No agency'}` };
 
-  const panel = (id: BankingTab, node: React.ReactNode) =>
+  const panel = (id: BankingTab, node: ReactNode) =>
     visited.has(id) && (
       <div className={'banking-tab' + (tab === id ? ' active' : '')} key={id}>
         {node}
@@ -49,21 +87,7 @@ export function BankingPage() {
 
   return (
     <section className="page active">
-      <div className="page-header">
-        <div>
-          <h1>
-            Banking{' '}
-            <span className="badge-subbal">
-              <span className="dot-mark"></span>Powered by SUBBAL
-            </span>
-          </h1>
-          <p className="page-sub">Create creator sub-balances, automate revenue splits, and manage payouts — without leaving FansMetric.</p>
-        </div>
-        <div className="conn-status">
-          <span className={'dot ' + connection.dot}></span>
-          {connection.text}
-        </div>
-      </div>
+      <BankingHeader dot={connection.dot} status={connection.text} />
 
       {bannerOpen && (
         <div className="concept-banner">
