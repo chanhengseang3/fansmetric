@@ -45,8 +45,10 @@ export interface SavingsAccount {
   submittedOn?: string;
 }
 
-export interface AccountsResponse {
-  getSavingsAccounts: SavingsAccount[];
+/** List endpoints return `{ items, total }`, some with extra paging fields. */
+export interface List<T> {
+  items: T[];
+  total: number;
 }
 
 export interface AccountTransaction {
@@ -68,13 +70,9 @@ export interface AccountTransaction {
   type?: string | null;
 }
 
-export interface AccountTransactionsResponse {
-  getAccountsHistory: {
-    total: number;
-    limit: number;
-    offset: number;
-    select: AccountTransaction[];
-  };
+export interface AccountTransactions extends List<AccountTransaction> {
+  limit: number;
+  offset: number;
 }
 
 export interface DailyAccountAnalytics {
@@ -110,8 +108,6 @@ export interface Creator {
   balance: number;
   totalAmountReceived: number;
   totalPaidToCreator: number;
-  /** set when a mandate was sent but not yet signed (demo data only; the API has no such field) */
-  mandateSentDate?: string;
 }
 
 export interface Paged<T> {
@@ -172,7 +168,8 @@ export interface Beneficiary {
   firstName?: string | null;
   lastName?: string | null;
   recipientType?: string | null;
-  paymentRail?: { name?: string } | null;
+  /** rail name, e.g. ACH */
+  paymentRail?: string | null;
   accountDetails?: {
     accountNumber?: string | null;
     accountType?: string | null;
@@ -188,40 +185,78 @@ export interface Beneficiary {
   } | null;
 }
 
-export interface PaymentOption {
-  id: number;
+export interface TransferQuote {
   paymentRail: string;
-  enabled: boolean;
-  identifier?: string;
-}
-
-export interface TransferAddress {
-  line1?: string;
-  line2?: string;
-  city?: string;
-  stateCode?: string;
-  postalCode?: string;
-  countryCode?: string;
-}
-
-export interface CreateTransferBody {
-  paymentRail: 'INTERNAL' | 'ACH';
   amount: number;
-  currency: 'USD';
-  reference: string;
-  originator: { accountId: string };
-  recipient:
-    | { recipientId: string }
-    | { accountId: string }
-    | { accountNumber: string; name?: string }
-    | {
-        name: string;
-        accountNumber: string;
-        recipientType: 'INDIVIDUAL' | 'BUSINESS';
-        accountType: 'CHECKING' | 'SAVINGS';
-        bankInformation: { routingNumber: string };
-        address?: TransferAddress;
-      };
+  currency: string;
+  fee: number;
+  totalDebit: number;
+  estimatedArrival: { minBusinessDays: number; maxBusinessDays: number } | null;
+}
+
+interface TransferBase {
+  accountId: string;
+  amount: number;
+  reference?: string;
+}
+
+export interface AchTransferBody extends TransferBase {
+  recipient: {
+    name: string;
+    accountNumber: string;
+    routingNumber: string;
+    accountType: 'CHECKING' | 'SAVINGS';
+    recipientType: 'INDIVIDUAL' | 'BUSINESS';
+  };
+}
+
+export interface InternalTransferBody extends TransferBase {
+  recipient: { accountId: string } | { accountNumber: string };
+}
+
+export interface FundEmployeesBody {
+  reference?: string;
+  allocations: { subAccountId: number; amount: number }[];
+}
+
+/** API path (under /api/v1) and body for one of the transfer endpoints. */
+export type TransferRequest =
+  | { path: 'transfers/ach'; body: AchTransferBody }
+  | { path: 'transfers/internal'; body: InternalTransferBody }
+  | { path: `transfers/beneficiary/${string}`; body: TransferBase }
+  | { path: `accounts/${string}/employee-accounts/fund`; body: FundEmployeesBody };
+
+export interface EmployeeAccount {
+  id: number;
+  accountNo: string;
+  nickName?: string | null;
+  status?: string;
+  availableBalance?: number;
+  card?: { id: number; network?: string; status?: string } | null;
+  user?: { id: number; firstname?: string; lastname?: string; email?: string } | null;
+}
+
+export interface AccountProduct {
+  id: number;
+  name: string;
+  shortName?: string;
+  description?: string | null;
+  currency?: { code: string };
+}
+
+export interface Notification {
+  id: string;
+  type: 'PAYMENT_RECEIVED' | 'PAYMENT_SENT';
+  title: string;
+  body: string;
+  amount: number;
+  currency: string;
+  createdAt: string;
+}
+
+export interface NotificationsResponse {
+  items: Notification[];
+  unreadCount: number;
 }
 
 export interface CreateMandateBody {

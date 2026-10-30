@@ -132,13 +132,15 @@ function buildUrl(path: string, query?: Query) {
 async function send(method: string, path: string, query?: Query, body?: unknown, retried = false): Promise<Response> {
   if (!session) throw new ApiError(401, 'Not signed in');
   if (!retried && session.expiresAt - Date.now() < 30_000) await refresh();
+  // FormData sets its own multipart content-type (with boundary)
+  const json = body !== undefined && !(body instanceof FormData);
   const res = await fetch(buildUrl(path, query), {
     method,
     headers: {
       authorization: `Bearer ${session?.accessToken ?? ''}`,
-      ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+      ...(json ? { 'content-type': 'application/json' } : {}),
     },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: json ? JSON.stringify(body) : (body as FormData | undefined),
   });
   if (res.status === 401 && !retried && (await refresh())) {
     return send(method, path, query, body, true);

@@ -186,7 +186,10 @@ describe('buildTransferBody', () => {
     const r = buildTransferBody('internal', 'between', { ...base, internalRecipient: { id: '92', name: 'Ops', meta: '', balance: 0 } });
     expect(r).toEqual({
       ok: true,
-      body: { paymentRail: 'INTERNAL', amount: 25.56, currency: 'USD', reference: 'Oct payout', originator: { accountId: '5702' }, recipient: { accountId: '92' } },
+      request: {
+        path: 'transfers/internal',
+        body: { accountId: '5702', amount: 25.56, reference: 'Oct payout', recipient: { accountId: '92' } },
+      },
     });
   });
 
@@ -195,16 +198,19 @@ describe('buildTransferBody', () => {
   });
 
   it('builds a transfer to another SUBBAL client by account number', () => {
-    const r = buildTransferBody('internal', 'crb', { ...base, crbAccountNumber: ' 000123 ', crbClientName: 'Acme' });
-    expect(r.ok && r.body.recipient).toEqual({ accountNumber: '000123', name: 'Acme' });
+    const r = buildTransferBody('internal', 'crb', { ...base, crbAccountNumber: ' 000123 ' });
+    expect(r.ok && r.request).toMatchObject({ path: 'transfers/internal', body: { recipient: { accountNumber: '000123' } } });
   });
 
-  it('uses a saved beneficiary by id for ACH and uppercases the reference', () => {
+  it('pays a saved beneficiary through its own endpoint', () => {
     const r = buildTransferBody('external', 'ach', { ...base, recipientContact: { id: '5021', name: 'Jordan', meta: '', balance: null } });
-    expect(r.ok && r.body).toMatchObject({ paymentRail: 'ACH', reference: 'OCT PAYOUT', recipient: { recipientId: '5021' } });
+    expect(r.ok && r.request).toEqual({
+      path: 'transfers/beneficiary/5021',
+      body: { accountId: '5702', amount: 25.56, reference: 'Oct payout' },
+    });
   });
 
-  it('builds an inline ACH recipient with address', () => {
+  it('builds a one-time ACH recipient', () => {
     const r = buildTransferBody('external', 'ach', {
       ...base,
       achAccountNumber: '1234567890',
@@ -212,24 +218,22 @@ describe('buildTransferBody', () => {
       achAccountType: 'Business',
       achBusinessName: 'Jordan Media LLC',
       achBankAccountType: 'SAVINGS',
-      addressLine1: '1180 Avenue of the Americas',
-      state: 'New York',
-      zip: '10036',
-      city: 'New York',
     });
-    expect(r.ok && r.body.recipient).toEqual({
-      name: 'Jordan Media LLC',
-      accountNumber: '1234567890',
-      recipientType: 'BUSINESS',
-      accountType: 'SAVINGS',
-      bankInformation: { routingNumber: '021000021' },
-      address: { line1: '1180 Avenue of the Americas', line2: undefined, city: 'New York', stateCode: 'NY', postalCode: '10036', countryCode: 'US' },
+    expect(r.ok && r.request).toEqual({
+      path: 'transfers/ach',
+      body: {
+        accountId: '5702',
+        amount: 25.56,
+        reference: 'Oct payout',
+        recipient: { name: 'Jordan Media LLC', accountNumber: '1234567890', routingNumber: '021000021', accountType: 'SAVINGS', recipientType: 'BUSINESS' },
+      },
     });
   });
 
   it.each([
     [{ ...base, achAccountNumber: '1', achRouting: '123', achFirstName: 'A' }, /routing/],
-    [{ ...base, reference: 'bad-ref!', recipientContact: debit }, /reference/],
+    [{ ...base, achAccountNumber: '1', achRouting: '021000021' }, /name/],
+    [{ ...base, reference: ' ', recipientContact: debit }, /reference/],
     [{ ...base, amount: '0' }, /amount/],
     [{ ...base, debitAccount: undefined }, /debit/],
   ])('validates ACH input %#', (fields, msg) => {
@@ -238,7 +242,13 @@ describe('buildTransferBody', () => {
     expect(!r.ok && r.error).toMatch(msg);
   });
 
-  it('does not submit the fund-employee flow', () => {
-    expect(buildTransferBody('fund', null, base)).toMatchObject({ ok: false });
+  it('funds employee accounts from the debit account, skipping blank amounts', () => {
+    const r = buildTransferBody('fund', null, { ...base, fundAmounts: { '244': '150', '245': '', '246': '75.555' } });
+    expect(r.ok && r.request).toEqual({
+      path: 'accounts/5702/employee-accounts/fund',
+      body: { reference: 'Oct payout', allocations: [{ subAccountId: 244, amount: 150 }, { subAccountId: 246, amount: 75.56 }] },
+    });
+    expect(buildTransferBody('fund', null, { ...base, fundAmounts: { '244': '' } })).toMatchObject({ ok: false });
+    expect(buildTransferBody('fund', null, { ...base, fundAmounts: { '244': '0' } })).toMatchObject({ ok: false });
   });
 });

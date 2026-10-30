@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { createCreator, createMandate, isDemo } from '../../api/endpoints';
+import { createCreator, createMandate } from '../../api/endpoints';
 import type { Creator } from '../../api/types';
 import { SplitDonut } from '../../components/charts';
 import { Modal } from '../../components/Modal';
@@ -109,7 +109,7 @@ function Wizard({ target, onClose }: { target: OnboardingTarget; onClose: () => 
   function finish() {
     creators.reload();
     onClose();
-    toast(isDemo() ? `Mandate flow completed — sample data, nothing was sent` : `Mandate sent to ${name}`);
+    toast(`Mandate sent to ${name}`);
   }
 
   return (

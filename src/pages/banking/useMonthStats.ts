@@ -44,7 +44,7 @@ export function useMonthStats(accounts: SavingsAccount[] | undefined) {
       lastMonthNet,
       netChangePct: pctChange(net, lastMonthNet),
       balanceChangePct: balanceNow != null && balanceThen != null ? pctChange(balanceNow, balanceThen) : null,
-      incomingCount: txLists.flatMap((l) => l.select).filter(isCredit).length,
+      incomingCount: txLists.flatMap((l) => l.items).filter(isCredit).length,
     };
   }, [ids]);
 }

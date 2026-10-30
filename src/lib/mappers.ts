@@ -1,12 +1,12 @@
 import type {
   AccountTransaction,
   Beneficiary,
-  CreateTransferBody,
   Creator,
   CreatorsAnalytics,
   CreatorTransaction,
   DailyAccountAnalytics,
   SavingsAccount,
+  TransferRequest,
 } from '../api/types';
 import { isoDate, maskAccount } from './format';
 
@@ -21,9 +21,8 @@ export function creatorName(c: Pick<Creator, 'displayName' | 'firstName' | 'last
 /** A creator is active once the middleware has a DynamoDB mandate record (sub-balance) for them. */
 export function creatorStatus(c: Creator): CreatorStatus {
   // the mandate record exists before signing, so PENDING must win over creatorId
-  if ((c.status ?? '').toUpperCase() === 'PENDING') return 'pending_signature';
-  if (c.creatorSubAccountId || c.creatorId) return 'active';
-  return c.mandateSentDate ? 'pending_signature' : 'setup_required';
+  if (String(c.status ?? '').toUpperCase() === 'PENDING') return 'pending_signature';
+  return c.creatorSubAccountId || c.creatorId ? 'active' : 'setup_required';
 }
 
 export function creatorStatusLabel(s: CreatorStatus): string {
@@ -234,7 +233,6 @@ export interface PickerItem {
 export interface TransferFields {
   debitAccount?: PickerItem;
   internalRecipient?: PickerItem;
-  fundRecipient?: PickerItem;
   recipientContact?: PickerItem;
   achAccountNumber?: string;
   achRouting?: string;
@@ -243,25 +241,12 @@ export interface TransferFields {
   achFirstName?: string;
   achLastName?: string;
   achBankAccountType?: 'CHECKING' | 'SAVINGS';
-  recipientName?: string;
-  addressLine1?: string;
-  companyUnit?: string;
-  country?: string;
-  state?: string;
-  zip?: string;
-  city?: string;
-  crbClientName?: string;
   crbAccountNumber?: string;
+  /** fund-employee amounts, keyed by employee sub-account id */
+  fundAmounts?: Record<string, string>;
   amount?: string;
   reference?: string;
 }
-
-export const US_STATES: Record<string, string> = {
-  California: 'CA',
-  'New York': 'NY',
-  Florida: 'FL',
-  Texas: 'TX',
-};
 
 export function accountToPickerItem(a: SavingsAccount): PickerItem {
   return { id: String(a.id), name: accountName(a), meta: accountMeta(a), balance: a.accountBalance ?? null };
@@ -273,7 +258,7 @@ export function beneficiaryName(b: Beneficiary): string {
 
 export function beneficiaryToPickerItem(b: Beneficiary): PickerItem {
   const acct = b.accountDetails?.accountNumber;
-  const meta = [b.paymentRail?.name, humanize(b.accountDetails?.accountType), acct ? '•••' + acct.slice(-4) : '']
+  const meta = [b.paymentRail, humanize(b.accountDetails?.accountType), acct ? '•••' + acct.slice(-4) : '']
     .filter(Boolean)
     .join(' · ');
   return { id: b.id, name: beneficiaryName(b), meta, balance: null };
@@ -282,7 +267,6 @@ export function beneficiaryToPickerItem(b: Beneficiary): PickerItem {
 /** Fields auto-filled when a saved recipient is picked (mirrors the sample's selectAccountFromPicker). */
 export function fieldsFromBeneficiary(b: Beneficiary): Partial<TransferFields> {
   const business = (b.recipientType ?? '').toUpperCase() === 'BUSINESS';
-  const stateLabel = b.address?.stateOrProvince?.label ?? '';
   return {
     achAccountNumber: b.accountDetails?.accountNumber ?? '',
     achRouting: b.accountDetails?.bankInformation?.routingNumber ?? '',
@@ -291,96 +275,83 @@ export function fieldsFromBeneficiary(b: Beneficiary): Partial<TransferFields> {
     achLastName: b.lastName ?? '',
     achBusinessName: b.businessName ?? '',
     achBankAccountType: (b.accountDetails?.accountType ?? '').toUpperCase() === 'SAVINGS' ? 'SAVINGS' : 'CHECKING',
-    recipientName: beneficiaryName(b),
-    addressLine1: b.address?.addressLine1 ?? '',
-    companyUnit: b.address?.addressLine2 ?? '',
-    country: 'United States',
-    state: stateLabel,
-    zip: b.address?.postalCode ?? '',
-    city: b.address?.city ?? '',
   };
 }
 
-export type BuildResult = { ok: true; body: CreateTransferBody } | { ok: false; error: string };
+export function achRecipientName(f: TransferFields): string {
+  return ((f.achAccountType === 'Business' ? f.achBusinessName : [f.achFirstName, f.achLastName].filter(Boolean).join(' ')) ?? '').trim();
+}
 
-/** Validate the wizard state and build the `POST /transfers` body. */
+const validAmount = (n: number) => Number.isFinite(n) && n >= 0.01;
+const cents = (n: number) => Math.round(n * 100) / 100;
+
+export type BuildResult = { ok: true; request: TransferRequest } | { ok: false; error: string };
+
+/** Validate the wizard state and pick the transfer endpoint and body. Field rules beyond these are the middleware's. */
 export function buildTransferBody(
   type: TransferType | null,
   subtype: TransferSubtype | null,
   f: TransferFields,
 ): BuildResult {
-  if (type === 'fund') return { ok: false, error: 'Funding employee accounts is not available yet.' };
   if (!f.debitAccount) return { ok: false, error: 'Select the account to debit.' };
-  const amount = Number(f.amount);
-  if (!f.amount || !Number.isFinite(amount) || amount < 0.01) return { ok: false, error: 'Enter an amount of at least $0.01.' };
+  const accountId = f.debitAccount.id;
   const reference = (f.reference ?? '').trim();
   if (!reference) return { ok: false, error: 'Enter a reference.' };
 
-  const base = {
-    amount: Math.round(amount * 100) / 100,
-    currency: 'USD' as const,
-    reference,
-    originator: { accountId: f.debitAccount.id },
-  };
+  if (type === 'fund') {
+    const allocations = Object.entries(f.fundAmounts ?? {})
+      .filter(([, v]) => v.trim() !== '')
+      .map(([id, v]) => ({ subAccountId: Number(id), amount: Number(v) }));
+    if (!allocations.length) return { ok: false, error: 'Enter an amount for at least one employee.' };
+    if (!allocations.every((a) => validAmount(a.amount))) return { ok: false, error: 'Each amount must be at least $0.01.' };
+    return {
+      ok: true,
+      request: {
+        path: `accounts/${accountId}/employee-accounts/fund`,
+        body: { reference, allocations: allocations.map((a) => ({ ...a, amount: cents(a.amount) })) },
+      },
+    };
+  }
+
+  const amount = Number(f.amount);
+  if (!f.amount || !validAmount(amount)) return { ok: false, error: 'Enter an amount of at least $0.01.' };
+  const base = { accountId, amount: cents(amount), reference };
 
   if (type === 'internal' && subtype === 'between') {
     if (!f.internalRecipient) return { ok: false, error: 'Select the recipient account.' };
-    if (f.internalRecipient.id === f.debitAccount.id) return { ok: false, error: 'Choose two different accounts.' };
-    return { ok: true, body: { ...base, paymentRail: 'INTERNAL', recipient: { accountId: f.internalRecipient.id } } };
+    if (f.internalRecipient.id === accountId) return { ok: false, error: 'Choose two different accounts.' };
+    return { ok: true, request: { path: 'transfers/internal', body: { ...base, recipient: { accountId: f.internalRecipient.id } } } };
   }
 
   if (type === 'internal' && subtype === 'crb') {
     const accountNumber = (f.crbAccountNumber ?? '').trim();
     if (!accountNumber) return { ok: false, error: 'Enter the recipient account number.' };
-    return {
-      ok: true,
-      body: {
-        ...base,
-        paymentRail: 'INTERNAL',
-        recipient: { accountNumber, ...(f.crbClientName ? { name: f.crbClientName.trim() } : {}) },
-      },
-    };
+    return { ok: true, request: { path: 'transfers/internal', body: { ...base, recipient: { accountNumber } } } };
   }
 
   if (type === 'external' && subtype === 'ach') {
-    base.reference = reference.toUpperCase();
-    if (!/^[A-Z0-9 ]{1,80}$/.test(base.reference)) {
-      return { ok: false, error: 'ACH reference must be up to 80 letters and digits.' };
-    }
-    if (f.recipientContact) {
-      return { ok: true, body: { ...base, paymentRail: 'ACH', recipient: { recipientId: f.recipientContact.id } } };
-    }
+    // a saved beneficiary is paid on its own rail with its saved bank details
+    if (f.recipientContact) return { ok: true, request: { path: `transfers/beneficiary/${f.recipientContact.id}`, body: base } };
     const accountNumber = (f.achAccountNumber ?? '').trim();
     const routingNumber = (f.achRouting ?? '').trim();
     if (!accountNumber) return { ok: false, error: 'Enter the recipient account number.' };
     if (!/^\d{9}$/.test(routingNumber)) return { ok: false, error: 'ACH routing number must be 9 digits.' };
     const business = f.achAccountType === 'Business';
-    const name = (
-      f.recipientName ||
-      (business ? f.achBusinessName : [f.achFirstName, f.achLastName].filter(Boolean).join(' ')) ||
-      ''
-    ).trim();
+    const name = achRecipientName(f);
     if (!name) return { ok: false, error: 'Enter the recipient name.' };
-    const address = {
-      line1: f.addressLine1 || undefined,
-      line2: f.companyUnit || undefined,
-      city: f.city || undefined,
-      stateCode: f.state ? US_STATES[f.state] ?? f.state : undefined,
-      postalCode: f.zip || undefined,
-      countryCode: 'US',
-    };
     return {
       ok: true,
-      body: {
-        ...base,
-        paymentRail: 'ACH',
-        recipient: {
-          name,
-          accountNumber,
-          recipientType: business ? 'BUSINESS' : 'INDIVIDUAL',
-          accountType: f.achBankAccountType ?? 'CHECKING',
-          bankInformation: { routingNumber },
-          ...(address.line1 ? { address } : {}),
+      request: {
+        path: 'transfers/ach',
+        body: {
+          ...base,
+          recipient: {
+            name,
+            accountNumber,
+            routingNumber,
+            accountType: f.achBankAccountType ?? 'CHECKING',
+            recipientType: business ? 'BUSINESS' : 'INDIVIDUAL',
+          },
         },
       },
     };

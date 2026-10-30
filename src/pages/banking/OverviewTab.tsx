@@ -20,7 +20,7 @@ export function OverviewTab({ onGoTo, onAddCreator }: { onGoTo: (t: BankingTab) 
     const lists = await Promise.all(
       accounts.data.map(async (a) => {
         const h = await getAccountTransactions(a.id, { limit: RECENT_COUNT });
-        return h.select.map((t) => toTxRow(t, accountName(a)));
+        return h.items.map((t) => toTxRow(t, accountName(a)));
       }),
     );
     return lists

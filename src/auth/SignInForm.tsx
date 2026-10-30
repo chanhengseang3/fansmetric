@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { login } from '../api/client';
 import { LogoMark } from '../components/icons';
 
-/** SUBBAL sign-in form; rendered inside the sign-in modal. A successful login switches the app to live data. */
+/** SUBBAL sign-in form; the app shows it until there is a session. */
 export function SignInForm({ onSignedIn }: { onSignedIn?: () => void }) {
   const [username, setUsername] = useState(import.meta.env.VITE_DEFAULT_USERNAME ?? '');
   const [password, setPassword] = useState('');
@@ -24,7 +24,7 @@ export function SignInForm({ onSignedIn }: { onSignedIn?: () => void }) {
   }
 
   return (
-    <form className="login-card" onSubmit={submit}>
+    <form className="card login-card" onSubmit={submit}>
       <div className="logo-row" style={{ padding: '0 0 6px' }}>
         <LogoMark />
         <span className="logo-word">FansMetric</span>
@@ -35,7 +35,7 @@ export function SignInForm({ onSignedIn }: { onSignedIn?: () => void }) {
           <span className="dot-mark"></span>Powered by SUBBAL
         </span>
       </h2>
-      <p className="muted-text">Use your SUBBAL agency credentials to load live banking data. Until then, Banking shows sample data.</p>
+      <p className="muted-text">Use your SUBBAL agency credentials.</p>
       <div className="form-row">
         <div className="form-field">
           <label htmlFor="username">Username</label>

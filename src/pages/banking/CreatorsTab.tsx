@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { isDemo } from '../../api/endpoints';
 import type { Creator } from '../../api/types';
 import { fmt, fmtDate, initials } from '../../lib/format';
 import { creatorName, creatorSplit, creatorStatus } from '../../lib/mappers';
@@ -73,7 +72,7 @@ export function CreatorsTab({ onSetUp }: { onSetUp: (c: Creator) => void }) {
                     </div>
                   </td>
                   <td><span className="status-pill pending">● Pending signature</span></td>
-                  <td className="muted-text" colSpan={3}>Mandate sent {fmtDate(c.mandateSentDate)} — awaiting creator e-signature</td>
+                  <td className="muted-text" colSpan={3}>Mandate sent — awaiting creator e-signature</td>
                   <td>—</td>
                   <td><button className="table-btn" onClick={() => setDetail(c)}>View</button></td>
                 </tr>
@@ -95,8 +94,8 @@ export function CreatorsTab({ onSetUp }: { onSetUp: (c: Creator) => void }) {
                 <td>—</td>
                 <td>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    {/* live data can't tell "pending signature" apart from "setup required" in the list; the detail can */}
-                    {!isDemo() && <button className="table-btn" onClick={() => setDetail(c)}>View</button>}
+                    {/* the list can't tell "pending signature" apart from "setup required"; the detail can */}
+                    <button className="table-btn" onClick={() => setDetail(c)}>View</button>
                     <button className="table-btn primary" onClick={() => onSetUp(c)}>Set up</button>
                   </div>
                 </td>

@@ -188,7 +188,7 @@ function PendingCreator({ creator, detail }: { creator: Creator; detail: Creator
 
   return (
     <>
-      <Profile name={name} sub={`Mandate sent ${fmtDate(creator.mandateSentDate ?? detail.mandateMedia?.createdAt)} · Awaiting signature`} empty />
+      <Profile name={name} sub={`Mandate sent ${fmtDate(detail.mandateMedia?.createdAt)} · Awaiting signature`} empty />
       <div className="pending-banner">
         ⏳ Sub-balance account details will appear here automatically once {name} signs the revenue-split mandate.
       </div>

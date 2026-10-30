@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { SignInForm } from './auth/SignInForm';
 import { useSession } from './auth/useSession';
-import { Modal } from './components/Modal';
 import { Sidebar, type PageId } from './components/Sidebar';
 import { useToast } from './components/Toast';
 import { Topbar } from './components/Topbar';
@@ -35,7 +34,6 @@ export function App() {
   const session = useSession();
   const toast = useToast();
   const toggleTheme = useTheme();
-  const [signInOpen, setSignInOpen] = useState(false);
   const [page, setPage] = useState<{ id: PageId; label: string | null; key: string | null }>({
     id: 'analytics',
     label: null,
@@ -47,30 +45,28 @@ export function App() {
     window.scrollTo(0, 0);
   }, []);
   const openBanking = useCallback(() => navigate('banking', null, 'banking'), [navigate]);
-  const closeSignIn = useCallback(() => setSignInOpen(false), []);
+
+  if (!session) {
+    return (
+      <div className="login-wrap">
+        <SignInForm onSignedIn={() => toast('Signed in to SUBBAL')} />
+      </div>
+    );
+  }
 
   return (
-    // remount the data layer when switching between sample data and a live SUBBAL session
-    <BankingDataProvider key={session ? 'live' : 'demo'}>
+    <BankingDataProvider>
       <div className="app">
         <Sidebar activeKey={page.key} onNavigate={navigate} />
         <div className="main">
-          <Topbar onToggleTheme={toggleTheme} onSignIn={() => setSignInOpen(true)} />
+          <Topbar onToggleTheme={toggleTheme} />
           <div className="content">
             {page.id === 'analytics' && <AnalyticsPage onOpenBanking={openBanking} />}
-            {page.id === 'banking' && <BankingPage onSignIn={() => setSignInOpen(true)} />}
+            {page.id === 'banking' && <BankingPage />}
             {page.id === 'placeholder' && <PlaceholderPage title={page.label ?? 'Section'} onOpenBanking={openBanking} />}
           </div>
         </div>
       </div>
-      <Modal open={signInOpen} onClose={closeSignIn}>
-        <SignInForm
-          onSignedIn={() => {
-            closeSignIn();
-            toast('Signed in to SUBBAL — showing live data');
-          }}
-        />
-      </Modal>
     </BankingDataProvider>
   );
 }

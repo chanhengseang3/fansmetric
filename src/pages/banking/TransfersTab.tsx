@@ -1,16 +1,22 @@
 import { useState, type ReactNode } from 'react';
-import { ApiError } from '../../api/client';
-import { createTransfer, getBeneficiaries, getTransferOptions, isDemo } from '../../api/endpoints';
+import {
+  getBeneficiaries,
+  getEmployeeAccounts,
+  getTransferOptions,
+  getTransferQuote,
+  sendTransfer,
+  uploadTransferAttachment,
+} from '../../api/endpoints';
 import { Icon } from '../../components/icons';
 import { useToast } from '../../components/Toast';
 import { useAsync } from '../../hooks/useAsync';
 import { fmt } from '../../lib/format';
 import {
   accountToPickerItem,
+  achRecipientName,
   beneficiaryToPickerItem,
   buildTransferBody,
   fieldsFromBeneficiary,
-  US_STATES,
   type PickerItem,
   type TransferFields,
   type TransferSubtype,
@@ -30,8 +36,11 @@ const SUBTYPE_LABEL: Record<TransferSubtype, string> = {
   crb: 'Transfer to another client of SUBBAL',
   ach: 'ACH Transfer',
 };
+const ATTACHMENT_TYPES = ['application/pdf', 'image/png', 'image/jpeg'];
+// shortcut: the middleware takes 10 MB, but Vercel Functions (our proxy) cap request bodies at 4.5 MB
+const ATTACHMENT_MAX_BYTES = 4.5 * 1024 * 1024;
 
-type PickerTarget = 'debitAccount' | 'internalRecipient' | 'fundRecipient' | 'recipientContact';
+type PickerTarget = 'debitAccount' | 'internalRecipient' | 'recipientContact';
 
 interface State {
   step: number;
@@ -39,9 +48,10 @@ interface State {
   subtype: TransferSubtype | null;
   fields: TransferFields;
   collapsed: Record<string, boolean>;
+  attachment: File | null;
 }
 
-const INITIAL: State = { step: 1, type: null, subtype: null, fields: {}, collapsed: {} };
+const INITIAL: State = { step: 1, type: null, subtype: null, fields: {}, collapsed: {}, attachment: null };
 
 export function TransfersTab() {
   const toast = useToast();
@@ -51,23 +61,36 @@ export function TransfersTab() {
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const f = s.fields;
 
   const options = useAsync(() => (agencyId != null ? getTransferOptions(agencyId) : Promise.resolve(null)), [agencyId]);
   const recipients = useAsync(
     async () =>
       picker === 'recipientContact' && agencyId != null
-        ? (await getBeneficiaries(agencyId)).filter((b) => (b.recipientType ?? '').toUpperCase() !== 'CONTRACTUAL_SPLIT')
+        ? // the ACH flow only offers beneficiaries saved on the ACH rail
+          (await getBeneficiaries(agencyId)).filter(
+            (b) => (b.recipientType ?? '').toUpperCase() !== 'CONTRACTUAL_SPLIT' && (!b.paymentRail || b.paymentRail === 'ACH'),
+          )
         : null,
     [picker === 'recipientContact', agencyId],
   );
+  const employees = useAsync(
+    () => (s.type === 'fund' && f.debitAccount ? getEmployeeAccounts(f.debitAccount.id) : Promise.resolve(null)),
+    [s.type, f.debitAccount?.id],
+  );
+  const quoteRail = s.subtype === 'ach' ? 'ACH' : s.type === 'internal' ? 'INTERNAL' : null;
+  const quote = useAsync(
+    () =>
+      s.step === 4 && quoteRail && f.debitAccount
+        ? getTransferQuote(f.debitAccount.id, quoteRail, Number(f.amount))
+        : Promise.resolve(null),
+    [s.step],
+  );
 
-  // a rail is usable unless the options endpoint explicitly lists it as disabled
-  const railEnabled = (rail: string) => {
-    const opt = options.data?.find((o) => o.paymentRail === rail);
-    return opt ? opt.enabled : true;
-  };
+  // until the options load (or if they fail) every rail is offered; the transfer endpoint has the final say.
+  // Staging returns Core labels ("Ach Outgoing Credit", "Internal Credit"), so match on the prefix.
+  const railEnabled = (rail: string) => !options.data || options.data.some((o) => o.toUpperCase().startsWith(rail));
 
-  const f = s.fields;
   const setField = <K extends keyof TransferFields>(k: K, v: TransferFields[K]) => setS((p) => ({ ...p, fields: { ...p.fields, [k]: v } }));
   const goStep = (step: number) => {
     setError('');
@@ -75,17 +98,14 @@ export function TransfersTab() {
   };
 
   const selectType = (type: TransferType) => {
-    if (type === 'fund') {
-      toast('Funding employee cards is not available through SUBBAL yet');
-      return;
-    }
     setError('');
-    setS({ ...INITIAL, type, step: 2 });
+    // funding has no second choice to make
+    setS({ ...INITIAL, type, step: type === 'fund' ? 3 : 2 });
   };
   const selectSubtype = (subtype: TransferSubtype) => setS((p) => ({ ...p, subtype, step: 3 }));
   const back = () => {
     setError('');
-    setS((p) => (p.step === 4 ? { ...p, step: 3 } : p.step === 3 ? { ...p, step: 2 } : { ...INITIAL }));
+    setS((p) => (p.step === 4 ? { ...p, step: 3 } : p.step === 3 && p.type !== 'fund' ? { ...p, step: 2 } : { ...INITIAL }));
   };
 
   const review = () => {
@@ -94,18 +114,37 @@ export function TransfersTab() {
     goStep(4);
   };
 
+  function pickAttachment(file: File | undefined) {
+    if (!file) return;
+    if (!ATTACHMENT_TYPES.includes(file.type)) return toast('Attach a PDF, PNG or JPEG file');
+    if (file.size > ATTACHMENT_MAX_BYTES) return toast('Attachments can be up to 4.5 MB');
+    setS((p) => ({ ...p, attachment: file }));
+  }
+
   async function submit() {
     const result = buildTransferBody(s.type, s.subtype, f);
     if (!result.ok) return setError(result.error);
     setBusy(true);
     setError('');
     try {
-      const res = await createTransfer(result.body);
-      toast(isDemo() ? 'Transfer submitted — sample data, nothing was sent' : `Transfer submitted · #${res.createPayment?.id ?? ''}`);
+      const res = await sendTransfer(result.request);
+      const id = res.createPayment?.id;
+      if (s.type === 'fund') {
+        toast('Employee accounts funded');
+      } else if (s.attachment && id) {
+        try {
+          await uploadTransferAttachment(id, s.attachment);
+          toast(`Transfer submitted · #${id} · attachment added`);
+        } catch (e) {
+          toast(`Transfer #${id} was sent, but the attachment failed: ${e instanceof Error ? e.message : 'upload error'}`);
+        }
+      } else {
+        toast(`Transfer submitted · #${id ?? ''}`);
+      }
       setS(INITIAL);
       accounts.reload();
     } catch (e) {
-      setError(e instanceof ApiError || e instanceof Error ? e.message : 'Transfer failed');
+      setError(e instanceof Error ? e.message : 'Transfer failed');
     } finally {
       setBusy(false);
     }
@@ -118,10 +157,10 @@ export function TransfersTab() {
       setS((p) => ({
         ...p,
         fields: { ...p.fields, recipientContact: item, ...(b ? fieldsFromBeneficiary(b) : {}) },
-        collapsed: { ...p.collapsed, achRecipientDetails: true, achAddress: true },
+        collapsed: { ...p.collapsed, achRecipientDetails: true },
       }));
     } else {
-      setField(picker, item);
+      setS((p) => ({ ...p, fields: { ...p.fields, [picker]: item, ...(picker === 'debitAccount' ? { fundAmounts: {} } : {}) } }));
     }
     setPicker(null);
   }
@@ -218,11 +257,49 @@ export function TransfersTab() {
           ) : (
             <button type="button" className="type-card" onClick={() => selectSubtype('ach')}>
               <div className="tc-title">ACH Transfer</div>
-              <div className="tc-desc">Usually the money will be available within the same account in 3 days.</div>
+              <div className="tc-desc">Usually the money will be available within 1–2 business days.</div>
             </button>
           )}
         </div>
         <div className="wizard-btn-row"><button className="action-btn" onClick={back}>Back</button></div>
+      </>
+    );
+  } else if (s.step === 3 && s.type === 'fund') {
+    body = (
+      <>
+        <h3 style={{ margin: '0 0 16px' }}>Fund employee account(s)</h3>
+        <div className="form-divider-title">Debit money from account</div>
+        {accountBtn('debitAccount', 'Select account')}
+        {f.debitAccount && (
+          <>
+            <div className="form-divider-title">Employee cards</div>
+            {employees.loading && <p className="muted-text">Loading employee accounts…</p>}
+            {employees.error && <p className="form-error">{employees.error.message}</p>}
+            {employees.data?.length === 0 && <p className="muted-text">No employee cards are funded from this account.</p>}
+            {employees.data?.map((e) => {
+              const name = [e.user?.firstname, e.user?.lastname].filter(Boolean).join(' ') || e.nickName || `Account ${e.accountNo}`;
+              const meta = [e.card?.network, `•••${e.accountNo.slice(-4)}`, `Balance ${fmt(e.availableBalance)}`].filter(Boolean).join(' · ');
+              return (
+                <div className="form-row" key={e.id}>
+                  <div className="form-field">
+                    <label>{name}</label>
+                    <div className="form-help">{meta}</div>
+                  </div>
+                  <div className="form-field">
+                    <label>Amount (USD)</label>
+                    <input
+                      type="number"
+                      value={f.fundAmounts?.[e.id] ?? ''}
+                      onChange={(ev) => setField('fundAmounts', { ...f.fundAmounts, [e.id]: ev.target.value })}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+            <div className="form-row">{input('reference', 'Reference*')}</div>
+          </>
+        )}
+        {reviewButtons}
       </>
     );
   } else if (s.step === 3 && s.subtype === 'ach') {
@@ -256,32 +333,6 @@ export function TransfersTab() {
         </div>
       </>
     );
-    const address = (
-      <>
-        <div className="form-row">{input('recipientName', 'Recipient full name*')}</div>
-        <div className="form-row">{input('addressLine1', 'Address line 1')}</div>
-        <div className="form-row">{input('companyUnit', 'Company name / Unit number')}</div>
-        <div className="form-row">
-          <div className="form-field">
-            <label>Country</label>
-            <select value="United States" onChange={() => undefined}>
-              <option value="United States">United States</option>
-            </select>
-          </div>
-          <div className="form-field">
-            <label>State</label>
-            <select value={f.state ?? ''} onChange={(e) => setField('state', e.target.value)}>
-              <option value="">Select state</option>
-              {f.state && !(f.state in US_STATES) && <option value={f.state}>{f.state}</option>}
-              {Object.keys(US_STATES).map((st) => (
-                <option key={st} value={st}>{st}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="form-row">{input('zip', 'Zip code')}{input('city', 'City')}</div>
-      </>
-    );
     body = (
       <>
         <h3 style={{ margin: '0 0 4px' }}>ACH Transfer</h3>
@@ -310,18 +361,17 @@ export function TransfersTab() {
             {accountDetails}
           </>
         )}
-        {picked ? (
-          section('achAddress', 'Recipient Name & Address', '✓ Auto-filled', address)
-        ) : (
-          <>
-            <div className="form-divider-title">Recipient Name &amp; Address</div>
-            {address}
-          </>
-        )}
         <div className="form-divider-title">Transfer document (optional)</div>
         <div className="attach-file-row">
-          <span>Include additional documents to your transfer</span>
-          <button className="link" onClick={() => toast('Attachments — coming soon')}>Add Attach File</button>
+          <span>{s.attachment ? `📄 ${s.attachment.name}` : 'Include additional documents to your transfer'}</span>
+          {s.attachment ? (
+            <button className="link" onClick={() => setS((p) => ({ ...p, attachment: null }))}>Remove</button>
+          ) : (
+            <label className="link" style={{ cursor: 'pointer' }}>
+              Add Attach File
+              <input type="file" accept={ATTACHMENT_TYPES.join(',')} hidden onChange={(e) => pickAttachment(e.target.files?.[0])} />
+            </label>
+          )}
         </div>
         {amountRef(false)}
         {reviewButtons}
@@ -346,7 +396,6 @@ export function TransfersTab() {
         <div className="form-divider-title">Debit money from account</div>
         {accountBtn('debitAccount', 'Select account')}
         <div className="form-divider-title">Recipient details</div>
-        <div className="form-row">{input('crbClientName', 'Recipient client name*')}</div>
         <div className="form-row">{input('crbAccountNumber', 'Recipient account number*')}</div>
         {amountRef(true)}
         {reviewButtons}
@@ -359,23 +408,38 @@ export function TransfersTab() {
     if (f.debitAccount) rows.push(['From account', f.debitAccount.name]);
     if (f.internalRecipient) rows.push(['To account', f.internalRecipient.name]);
     if (f.recipientContact) rows.push(['Recipient', f.recipientContact.name]);
-    if (f.recipientName && !f.recipientContact) rows.push(['Recipient name', f.recipientName]);
-    if (f.crbClientName) rows.push(['Recipient client', f.crbClientName]);
+    if (s.subtype === 'ach' && !f.recipientContact) rows.push(['Recipient name', achRecipientName(f)]);
     if (f.crbAccountNumber) rows.push(['Recipient account', f.crbAccountNumber]);
-    if (f.amount) rows.push(['Amount', fmt(parseFloat(f.amount) || 0)]);
-    if (f.reference) rows.push(['Reference', s.subtype === 'ach' ? f.reference.toUpperCase() : f.reference]);
+    if (s.type === 'fund') {
+      for (const e of employees.data ?? []) {
+        const v = f.fundAmounts?.[e.id];
+        if (v) rows.push([[e.user?.firstname, e.user?.lastname].filter(Boolean).join(' ') || e.nickName || e.accountNo, fmt(Number(v))]);
+      }
+    }
+    if (f.amount && s.type !== 'fund') rows.push(['Amount', fmt(parseFloat(f.amount) || 0)]);
+    if (quote.data) {
+      const q = quote.data;
+      rows.push(['Fee', fmt(q.fee)], ['Total debit', fmt(q.totalDebit)]);
+      if (q.estimatedArrival) {
+        const { minBusinessDays: lo, maxBusinessDays: hi } = q.estimatedArrival;
+        rows.push(['Estimated arrival', hi === 0 ? 'Same day' : `${lo === hi ? hi : `${lo}–${hi}`} business day${hi === 1 ? '' : 's'}`]);
+      }
+    }
+    if (s.attachment) rows.push(['Attachment', s.attachment.name]);
+    if (f.reference) rows.push(['Reference', f.reference]);
     body = (
       <>
         <h3 style={{ margin: '0 0 16px' }}>Confirm details</h3>
         <div className="confirm-summary">
-          {rows.map(([k, v]) => (
-            <div className="confirm-row" key={k}><span>{k}</span><span>{v}</span></div>
+          {rows.map(([k, v], i) => (
+            <div className="confirm-row" key={i}><span>{k}</span><span>{v}</span></div>
           ))}
+          {quote.loading && quoteRail && <div className="confirm-row"><span>Fee</span><span>…</span></div>}
         </div>
         <p className="muted-text" style={{ maxWidth: 640 }}>
-          {isDemo()
-            ? 'Review the details above before sending. In production, this step would also show applicable fees and the estimated arrival time.'
-            : 'Review the details above before sending. This sends a real payment instruction to SUBBAL; fees and arrival time depend on the payment rail.'}
+          {quote.error
+            ? `Fees could not be loaded (${quote.error.message}). Review the details above before sending.`
+            : 'Review the details above before sending. This sends a real payment instruction to SUBBAL.'}
         </p>
         {error && <div className="form-error">{error}</div>}
         <div className="wizard-btn-row">
@@ -393,11 +457,7 @@ export function TransfersTab() {
   return (
     <>
       <div className="concept-banner">
-        <span>
-          {isDemo()
-            ? '🔒 For security, initiating a transfer requires signing in with your SUBBAL credentials. (Not required in this preview.)'
-            : '🔒 Transfers are sent with your SUBBAL session. Some payments may require additional approval in SUBBAL.'}
-        </span>
+        <span>🔒 Transfers are sent with your SUBBAL session. Some payments may require additional approval in SUBBAL.</span>
       </div>
       <div className="card">
         <div className="transfer-stepper">

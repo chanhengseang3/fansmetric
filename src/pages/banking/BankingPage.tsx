@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { isDemo } from '../../api/endpoints';
 import { Icon } from '../../components/icons';
 import { AccountsTab } from './AccountsTab';
 import { AnalyticsTab } from './AnalyticsTab';
@@ -21,7 +20,7 @@ const TABS: { id: BankingTab; label: string; lock?: boolean }[] = [
   { id: 'statements', label: 'Statements' },
 ];
 
-export function BankingPage({ onSignIn }: { onSignIn: () => void }) {
+export function BankingPage() {
   const { me } = useBanking();
   const [tab, setTab] = useState<BankingTab>('overview');
   // tabs mount on first visit and stay mounted (keeps wizard state, avoids refetching)
@@ -35,10 +34,7 @@ export function BankingPage({ onSignIn }: { onSignIn: () => void }) {
   };
 
   const agencyName = me.data?.agency?.displayName;
-  const demo = isDemo();
-  const connection = demo
-    ? { dot: 'dot-amber', text: `Sample data · ${agencyName ?? 'Agency Demo 1'}` }
-    : me.error
+  const connection = me.error
     ? { dot: 'dot-red', text: 'Not connected' }
     : me.loading
       ? { dot: 'dot-amber', text: 'Connecting…' }
@@ -71,17 +67,7 @@ export function BankingPage({ onSignIn }: { onSignIn: () => void }) {
 
       {bannerOpen && (
         <div className="concept-banner">
-          {demo ? (
-            <span>
-              🧩 Conceptual preview with sample data.{' '}
-              <button className="link" onClick={onSignIn}>
-                Sign in to SUBBAL
-              </button>{' '}
-              to load your live balances, creators and payouts.
-            </span>
-          ) : (
-            <span>🧩 Live SUBBAL data — balances, creators, splits and payouts below come straight from your SUBBAL agency account.</span>
-          )}
+          <span>🧩 Live SUBBAL data — balances, creators, splits and payouts below come straight from your SUBBAL agency account.</span>
           <button onClick={() => setBannerOpen(false)} aria-label="Dismiss">✕</button>
         </div>
       )}

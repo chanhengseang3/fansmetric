@@ -1,29 +1,63 @@
 import { useEffect, useRef, useState } from 'react';
 import { logout } from '../api/client';
-import { isDemo } from '../api/endpoints';
-import { initials } from '../lib/format';
+import { getNotifications } from '../api/endpoints';
+import { useAsync } from '../hooks/useAsync';
+import { fmtDate, fmtSigned, initials } from '../lib/format';
 import { useBanking } from '../pages/banking/BankingData';
 import { Icon } from './icons';
-import { useToast } from './Toast';
 
-export function Topbar({ onToggleTheme, onSignIn }: { onToggleTheme: () => void; onSignIn: () => void }) {
-  const toast = useToast();
+// the middleware keeps no read state: we store when the feed was last opened and send it as `since`
+const SEEN_KEY = 'fm.notificationsSeen';
+
+function readSeen() {
+  try {
+    return localStorage.getItem(SEEN_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Closes the popup on any mousedown outside `ref`. */
+function useClickAway(open: boolean, setOpen: (open: boolean) => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open, setOpen]);
+  return ref;
+}
+
+export function Topbar({ onToggleTheme }: { onToggleTheme: () => void }) {
   const { me, creators } = useBanking();
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [bellOpen, setBellOpen] = useState(false);
+  const [seen, setSeen] = useState(readSeen);
+  const menuRef = useClickAway(menuOpen, setMenuOpen);
+  const bellRef = useClickAway(bellOpen, setBellOpen);
+  const feed = useAsync(() => getNotifications(seen), [seen]);
 
   const user = me.data?.appUser;
   const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.username || '';
   const count = creators.data?.total;
+  const unread = feed.data?.unreadCount ?? 0;
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [menuOpen]);
+  function toggleBell() {
+    if (!bellOpen && unread) {
+      const now = new Date().toISOString();
+      try {
+        localStorage.setItem(SEEN_KEY, now);
+      } catch {
+        // storage unavailable: unread state resets on reload
+      }
+      // refetch clears the badge; the items stay, `since` only changes unreadCount
+      setSeen(now);
+    }
+    setBellOpen((o) => !o);
+  }
 
   return (
     <header className="topbar">
@@ -31,10 +65,33 @@ export function Topbar({ onToggleTheme, onSignIn }: { onToggleTheme: () => void;
         <Icon.Person />
         Select accounts {count != null && <span className="count">· {count} selected</span>}
       </div>
-      <button className="icon-btn" onClick={() => toast('Notifications — demo only')} aria-label="Notifications">
-        <Icon.Bell />
-        <span className="badge-dot">2</span>
-      </button>
+      <div className="user-menu-wrap" ref={bellRef}>
+        <button className="icon-btn" onClick={toggleBell} aria-label="Notifications" aria-haspopup="menu">
+          <Icon.Bell />
+          {unread > 0 && <span className="badge-dot">{unread > 99 ? '99+' : unread}</span>}
+        </button>
+        {bellOpen && (
+          <div className="user-menu notif-menu" role="menu">
+            <div className="user-menu-head">
+              <strong>Notifications</strong>
+            </div>
+            {feed.loading && !feed.data && <p className="muted-text notif-empty">Loading…</p>}
+            {feed.error && <p className="form-error">{feed.error.message}</p>}
+            {feed.data?.items.length === 0 && <p className="muted-text notif-empty">No recent activity</p>}
+            {feed.data?.items.map((n) => (
+              <div className="notif-item" key={n.id}>
+                <div>
+                  <strong>{n.title}</strong>
+                  <div className="creator-sub">{[n.body, fmtDate(n.createdAt)].filter(Boolean).join(' · ')}</div>
+                </div>
+                <span className={n.type === 'PAYMENT_SENT' ? 'neg' : 'pos'}>
+                  {fmtSigned(n.type === 'PAYMENT_SENT' ? -Math.abs(n.amount) : Math.abs(n.amount))}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <button className="icon-btn" onClick={onToggleTheme} title="Toggle theme" aria-label="Toggle theme">
         <Icon.Moon />
       </button>
@@ -46,28 +103,13 @@ export function Topbar({ onToggleTheme, onSignIn }: { onToggleTheme: () => void;
           <div className="user-menu" role="menu">
             <div className="user-menu-head">
               <strong>{fullName || 'Signed in'}</strong>
-              {isDemo() && <span className="muted-text">Viewing sample data</span>}
               {user?.email && <span className="muted-text">{user.email}</span>}
               {me.data?.agency && <span className="muted-text">{me.data.agency.displayName}</span>}
             </div>
-            {isDemo() ? (
-              <button
-                className="user-menu-item"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onSignIn();
-                }}
-              >
-                <Icon.Bank />
-                Sign in to SUBBAL
-              </button>
-            ) : (
-              <button className="user-menu-item" role="menuitem" onClick={() => logout()}>
-                <Icon.Logout />
-                Sign out of SUBBAL
-              </button>
-            )}
+            <button className="user-menu-item" role="menuitem" onClick={() => logout()}>
+              <Icon.Logout />
+              Sign out of SUBBAL
+            </button>
           </div>
         )}
       </div>
