@@ -5,7 +5,7 @@ import { MonthsRow, SplitDonut, TrendChart } from '../../components/charts';
 import { Modal } from '../../components/Modal';
 import { useAsync } from '../../hooks/useAsync';
 import { fmt, fmtDate, fmtSigned, initials, pctChange } from '../../lib/format';
-import { creatorName, creatorSplit, creatorStatus, humanize, incomeBreakdown, lastMonths, monthlyIncome } from '../../lib/mappers';
+import { creatorName, creatorSplit, creatorStatus, humanize, incomeBreakdown, isCredit, lastMonths, monthlyIncome } from '../../lib/mappers';
 
 export function CreatorDetailModal({ creator, onClose }: { creator: Creator | null; onClose: () => void }) {
   return (
@@ -90,7 +90,7 @@ function ActiveCreator({ creator, detail, txs, txTotal }: { creator: Creator; de
             <h3>Mandate agreement</h3>
             <SplitDonut business={split.agency} />
             <div className="file-row">
-              <span>📄 {detail.mandateMedia?.filename ?? detail.mandateMedia?.name ?? 'No mandate document on file'}</span>
+              <span>📄{'\u00a0'}{detail.mandateMedia?.filename ?? detail.mandateMedia?.name ?? 'No mandate document on file'}</span>
               <span className="muted-text">{fmtDate(detail.mandateMedia?.createdAt)}</span>
             </div>
           </div>
@@ -102,7 +102,7 @@ function ActiveCreator({ creator, detail, txs, txTotal }: { creator: Creator; de
             <tbody>
               {txs.length === 0 && <tr><td colSpan={4} className="muted-text empty-cell">No transactions yet</td></tr>}
               {txs.map((t) => {
-                const credit = (t.transactionType ?? '').toUpperCase() !== 'DEBIT' && t.amount >= 0;
+                const credit = isCredit(t);
                 const signed = credit ? Math.abs(t.amount) : -Math.abs(t.amount);
                 return (
                   <tr key={t.transactionId}>
@@ -197,7 +197,7 @@ function PendingCreator({ creator, detail }: { creator: Creator; detail: Creator
           <h3>Mandate agreement</h3>
           <SplitDonut business={agencyPct} />
           <div className="file-row">
-            <span>📄 {detail.mandateMedia?.filename ?? `Three Way Mandate - ${name}.pdf`}</span>
+            <span>📄{'\u00a0'}{detail.mandateMedia?.filename ?? `Three Way Mandate - ${name}.pdf`}</span>
             <span className="status-pill pending">Awaiting signature</span>
           </div>
         </div>

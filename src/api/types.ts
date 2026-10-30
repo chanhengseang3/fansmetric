@@ -75,14 +75,6 @@ export interface AccountTransactions extends List<AccountTransaction> {
   offset: number;
 }
 
-export interface DailyAccountAnalytics {
-  date: string;
-  accountId: number;
-  income: number;
-  expense: number;
-  runningBalance: number;
-}
-
 /** keyed by YYYY-MM */
 export type CreatorsAnalytics = Record<string, { AGENCY: number; CREATOR: number; TOTAL: number }>;
 

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { AccountTransaction, Creator, CreatorTransaction, SavingsAccount } from '../api/types';
 import { fmt, fmtSigned, initials, maskAccount, pctChange } from './format';
 import {
-  balanceAt,
   buildTransferBody,
   creatorSplit,
   creatorStatus,
@@ -13,7 +12,7 @@ import {
   monthlyIncome,
   payoutSeriesForCreator,
   payoutSeriesFromAnalytics,
-  sumAnalytics,
+  sumLedger,
   toTxRow,
   type TransferFields,
 } from './mappers';
@@ -126,15 +125,18 @@ describe('months & analytics', () => {
     expect(incomeBreakdown(many.slice(0, 4)).map((b) => b.label)).toEqual(['A', 'B', 'C', 'D']);
   });
 
-  it('sums daily account analytics in a range and reads balances', () => {
+  it('sums Core ledger income and expense by booking date', () => {
+    const tx = (id: string, valueDate: string, amount: number, transactionType: string): AccountTransaction => ({
+      id, runningBalance: 0, amount, typeOf: 0, createdAt: `${valueDate}T23:30:00Z`, valueDate, transactionType,
+    });
     const rows = [
-      { date: '2026-09-30', accountId: 1, income: 10, expense: 5, runningBalance: 100 },
-      { date: '2026-10-01', accountId: 1, income: 20, expense: -3, runningBalance: 117 },
-      { date: '2026-10-02', accountId: 1, income: 0, expense: 0, runningBalance: 117 },
+      tx('a', '2026-09-30', 10, 'DEPOSIT'),
+      tx('b', '2026-10-01', 69182, 'DEPOSIT'),
+      tx('c', '2026-10-11', 43750, 'WITHDRAWAL'),
+      tx('d', '2026-10-12', 0.5, 'WITHDRAWAL'),
     ];
-    expect(sumAnalytics(rows, '2026-10-01', '2026-10-31')).toEqual({ income: 20, expense: 3, incomingDays: 1 });
-    expect(balanceAt(rows, '2026-09-30')).toBe(100);
-    expect(balanceAt(rows, '2026-08-01')).toBeNull();
+    expect(sumLedger(rows, '2026-10-01', '2026-10-31')).toEqual({ income: 69182, expense: 43750.5, incomingCount: 1 });
+    expect(sumLedger(rows, '2026-09-01', '2026-09-30')).toEqual({ income: 10, expense: 0, incomingCount: 1 });
   });
 });
 

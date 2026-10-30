@@ -9,7 +9,6 @@ import type {
   CreatorDetail,
   CreatorsAnalytics,
   CreatorTransaction,
-  DailyAccountAnalytics,
   EmployeeAccount,
   List,
   NotificationsResponse,
@@ -33,9 +32,6 @@ export const openAccount = (body: { productId: number; nickName?: string }) => a
 
 export const getEmployeeAccounts = async (accountId: string) =>
   (await apiGet<List<EmployeeAccount>>(`accounts/${accountId}/employee-accounts`, { limit: 200 })).items;
-
-export const getAccountsAnalytics = (startDate: string, endDate: string, accountIds: number[]) =>
-  apiGet<DailyAccountAnalytics[]>('agencies/me/accounts/analytics', { startDate, endDate, accountIds: accountIds.join(',') });
 
 export const getCreatorsAnalytics = (startDate: string, endDate: string, accountIds: number[]) =>
   apiGet<CreatorsAnalytics>('agencies/me/creators/analytics', { startDate, endDate, accountIds: accountIds.join(',') });

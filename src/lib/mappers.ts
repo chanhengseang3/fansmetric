@@ -4,7 +4,6 @@ import type {
   Creator,
   CreatorsAnalytics,
   CreatorTransaction,
-  DailyAccountAnalytics,
   SavingsAccount,
   TransferRequest,
 } from '../api/types';
@@ -200,22 +199,22 @@ export function humanize(s: string | null | undefined): string {
 export interface PeriodTotals {
   income: number;
   expense: number;
-  incomingDays: number;
+  incomingCount: number;
 }
 
-export function sumAnalytics(rows: DailyAccountAnalytics[], fromDate: string, toDate: string): PeriodTotals {
-  const inRange = rows.filter((r) => r.date >= fromDate && r.date <= toDate);
+/** Income/expense from Core ledger rows booked between `fromDate` and `toDate` (YYYY-MM-DD, inclusive). */
+export function sumLedger(txs: AccountTransaction[], fromDate: string, toDate: string): PeriodTotals {
+  const inRange = txs.filter((t) => {
+    const d = (t.valueDate || t.createdAt || '').slice(0, 10);
+    return d >= fromDate && d <= toDate;
+  });
+  const credits = inRange.filter(isCredit);
+  const debits = inRange.filter((t) => !isCredit(t));
   return {
-    income: round(sum(inRange.map((r) => r.income))),
-    expense: round(sum(inRange.map((r) => Math.abs(r.expense)))),
-    incomingDays: inRange.filter((r) => r.income > 0).length,
+    income: round(sum(credits.map((t) => Math.abs(t.amount)))),
+    expense: round(sum(debits.map((t) => Math.abs(t.amount)))),
+    incomingCount: credits.length,
   };
-}
-
-/** Running balance at the end of the latest day on or before `date`. */
-export function balanceAt(rows: DailyAccountAnalytics[], date: string): number | null {
-  const prior = rows.filter((r) => r.date <= date);
-  return prior.length ? prior[prior.length - 1].runningBalance : null;
 }
 
 /* ---------------- Transfers ---------------- */

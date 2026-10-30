@@ -1,8 +1,8 @@
-import { getAccountsAnalytics, getAccountTransactions } from '../../api/endpoints';
+import { getAccountTransactions } from '../../api/endpoints';
 import type { SavingsAccount } from '../../api/types';
 import { useAsync } from '../../hooks/useAsync';
 import { isoDate, pctChange } from '../../lib/format';
-import { balanceAt, isCredit, sumAnalytics } from '../../lib/mappers';
+import { sum, sumLedger } from '../../lib/mappers';
 
 export interface MonthStats {
   income: number;
@@ -14,7 +14,13 @@ export interface MonthStats {
   incomingCount: number;
 }
 
-/** Month-to-date income/expense (agency accounts analytics) plus the number of incoming transactions. */
+// shortcut: one page per account; months with more rows than this are undercounted, page through `offset` if that happens
+const LEDGER_LIMIT = 500;
+
+/**
+ * This and last month's income/expense, read from each account's Core ledger.
+ * Not from /agencies/me/accounts/analytics: its DynamoDB totals disagree with Core (MS-196).
+ */
 export function useMonthStats(accounts: SavingsAccount[] | undefined) {
   const ids = (accounts ?? []).map((a) => a.id).join(',');
   return useAsync<MonthStats | undefined>(async () => {
@@ -25,17 +31,18 @@ export function useMonthStats(accounts: SavingsAccount[] | undefined) {
     const lastMonthEnd = isoDate(new Date(now.getFullYear(), now.getMonth(), 0));
     const today = isoDate(now);
 
-    const [daily, txLists] = await Promise.all([
-      getAccountsAnalytics(lastMonthStart, today, accounts.map((a) => a.id)),
-      Promise.all(accounts.map((a) => getAccountTransactions(a.id, { startDate: monthStart, endDate: today, limit: 500 }))),
-    ]);
+    const ledgers = await Promise.all(
+      accounts.map((a) => getAccountTransactions(a.id, { startDate: lastMonthStart, endDate: today, limit: LEDGER_LIMIT })),
+    );
+    const txs = ledgers.flatMap((l) => l.items);
 
-    const current = sumAnalytics(daily, monthStart, today);
-    const previous = sumAnalytics(daily, lastMonthStart, lastMonthEnd);
-    const balanceNow = balanceAt(daily, today);
-    const balanceThen = balanceAt(daily, lastMonthEnd);
+    const current = sumLedger(txs, monthStart, today);
+    const previous = sumLedger(txs, lastMonthStart, lastMonthEnd);
     const net = current.income - current.expense;
     const lastMonthNet = previous.income - previous.expense;
+    // balance at the end of last month = today's balance minus this month's movement
+    const balanceNow = sum(accounts.map((a) => a.accountBalance));
+    const balanceThen = balanceNow - net;
 
     return {
       income: current.income,
@@ -43,8 +50,8 @@ export function useMonthStats(accounts: SavingsAccount[] | undefined) {
       net,
       lastMonthNet,
       netChangePct: pctChange(net, lastMonthNet),
-      balanceChangePct: balanceNow != null && balanceThen != null ? pctChange(balanceNow, balanceThen) : null,
-      incomingCount: txLists.flatMap((l) => l.items).filter(isCredit).length,
+      balanceChangePct: pctChange(balanceNow, balanceThen),
+      incomingCount: current.incomingCount,
     };
   }, [ids]);
 }
