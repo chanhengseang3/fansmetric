@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { login } from '../api/client';
 import { LogoMark } from '../components/icons';
 
-/** SUBBAL sign-in form; the Banking page shows it until there is a SUBBAL session. */
+/** SUBBAL sign-in form; the Banking page opens it in a modal from its "Connect to SUBBAL" button. */
 export function SignInForm({ onSignedIn }: { onSignedIn?: () => void }) {
   const [username, setUsername] = useState(import.meta.env.VITE_DEFAULT_USERNAME ?? '');
   const [password, setPassword] = useState('');
@@ -24,7 +24,7 @@ export function SignInForm({ onSignedIn }: { onSignedIn?: () => void }) {
   }
 
   return (
-    <form className="card login-card" onSubmit={submit}>
+    <form className="login-card" onSubmit={submit}>
       <div className="logo-row" style={{ padding: '0 0 6px' }}>
         <LogoMark />
         <span className="logo-word">FansMetric</span>

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { SignInForm } from '../../auth/SignInForm';
 import { useSession } from '../../auth/useSession';
 import { Icon } from '../../components/icons';
+import { Modal } from '../../components/Modal';
 import { useToast } from '../../components/Toast';
 import { AccountsTab } from './AccountsTab';
 import { AnalyticsTab } from './AnalyticsTab';
@@ -47,13 +48,23 @@ function BankingHeader({ dot, status }: { dot: string; status: string }) {
 export function BankingPage() {
   const session = useSession();
   const toast = useToast();
+  const [connecting, setConnecting] = useState(false);
   if (session) return <BankingTabs />;
   return (
     <section className="page active">
       <BankingHeader dot="dot-amber" status="Not connected" />
       <div className="banking-signin">
-        <SignInForm onSignedIn={() => toast('Signed in to SUBBAL')} />
+        <div className="card login-card">
+          <h2>Connect your SUBBAL account</h2>
+          <p className="muted-text">Banking runs on SUBBAL. Connect your SUBBAL agency account to manage balances, creators and payouts.</p>
+          <button className="action-btn primary full" onClick={() => setConnecting(true)}>
+            Connect to SUBBAL
+          </button>
+        </div>
       </div>
+      <Modal open={connecting} onClose={() => setConnecting(false)}>
+        <SignInForm onSignedIn={() => toast('Signed in to SUBBAL')} />
+      </Modal>
     </section>
   );
 }

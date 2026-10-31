@@ -646,6 +646,7 @@
   .login-card h2{margin:6px 0 4px;font-size:19px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
   .login-card .form-row{margin-bottom:12px;}
   .login-card .action-btn{margin-top:6px;}
+  .modal-panel .login-card{padding:0;max-width:none;}
   .form-error{
     background:var(--red-soft);color:var(--red);border-radius:var(--radius-sm);
     padding:9px 12px;font-size:12.5px;margin:4px 0 6px;
