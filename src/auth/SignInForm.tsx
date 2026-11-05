@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { login } from '../api/client';
-import { LogoMark } from '../components/icons';
+import { SubbalMark } from '../components/icons';
 
 /** SUBBAL sign-in form; the Banking page opens it in a modal from its "Connect to SUBBAL" button. */
 export function SignInForm({ onSignedIn }: { onSignedIn?: () => void }) {
@@ -26,15 +26,10 @@ export function SignInForm({ onSignedIn }: { onSignedIn?: () => void }) {
   return (
     <form className="login-card" onSubmit={submit}>
       <div className="logo-row" style={{ padding: '0 0 6px' }}>
-        <LogoMark />
-        <span className="logo-word">FansMetric</span>
+        <SubbalMark />
+        <span className="logo-word">Subbal</span>
       </div>
-      <h2>
-        Sign in{' '}
-        <span className="badge-subbal">
-          <span className="dot-mark"></span>Powered by SUBBAL
-        </span>
-      </h2>
+      <h2>Sign in</h2>
       <p className="muted-text">Banking runs on SUBBAL. Sign in with your SUBBAL agency credentials to continue.</p>
       <div className="form-row">
         <div className="form-field">

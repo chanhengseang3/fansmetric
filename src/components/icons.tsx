@@ -15,6 +15,16 @@ export function LogoMark() {
   );
 }
 
+// Subbal logo: black "SB" on white
+export function SubbalMark() {
+  return (
+    <svg className="logo-mark" viewBox="0 0 32 32" fill="none">
+      <rect x="0.5" y="0.5" width="31" height="31" rx="8.5" fill="#fff" stroke="#e2e5ea" />
+      <text x="16" y="21" textAnchor="middle" fontSize="13" fontWeight="800" fill="#000" fontFamily="inherit">SB</text>
+    </svg>
+  );
+}
+
 const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8 } as const;
 
 export const Icon = {

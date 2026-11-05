@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Creator } from '../../api/types';
 import { fmt, fmtDate, initials } from '../../lib/format';
 import { creatorName, creatorSplit, creatorStatus } from '../../lib/mappers';
+import { AllTimePerformanceCard } from './AnalyticsTab';
 import { useBanking } from './BankingData';
 import { CreatorDetailModal } from './CreatorDetailModal';
 
@@ -15,6 +16,8 @@ export function CreatorsTab({ onSetUp }: { onSetUp: (c: Creator) => void }) {
   const list = all.filter((c) => creatorName(c).toLowerCase().includes(q));
 
   return (
+    <>
+    <AllTimePerformanceCard />
     <div className="card">
       <div className="card-head">
         <h3>
@@ -106,5 +109,6 @@ export function CreatorsTab({ onSetUp }: { onSetUp: (c: Creator) => void }) {
       </table>
       <CreatorDetailModal creator={detail} onClose={() => setDetail(null)} />
     </div>
+    </>
   );
 }

@@ -22,7 +22,6 @@ export function AnalyticsTab() {
   const { accounts, creators } = useBanking();
   const list = creators.data?.items ?? [];
   const activeList = list.filter((c) => creatorStatus(c) === 'active');
-  const [summaryId, setSummaryId] = useState('all');
   const [payoutId, setPayoutId] = useState('all');
   const stats = useMonthStats(accounts.data);
 
@@ -39,63 +38,11 @@ export function AnalyticsTab() {
     return payoutSeriesFromAnalytics(await getCreatorsAnalytics(startDate, endDate, accountIds), months);
   }, [payoutCreator?.id, months, accountIds.join(',')]);
 
-  // all-time summary, optionally for one creator
-  const selected = list.find((c) => String(c.id) === summaryId);
-  let summary: { usersLabel: string; users: string; usersSub: string; income: string; creator: string; agency: string; sub: string };
-  if (!selected) {
-    const t = creatorTotals(list);
-    summary = {
-      usersLabel: 'Total users',
-      users: creators.data ? String(creators.data.total) : '—',
-      usersSub: 'All creators',
-      income: fmt(t.income),
-      creator: fmt(t.creator),
-      agency: fmt(t.agency),
-      sub: 'All time',
-    };
-  } else if (creatorStatus(selected) === 'active') {
-    summary = {
-      usersLabel: 'Activated on',
-      users: fmtDate(selected.submittedOn),
-      usersSub: creatorName(selected),
-      income: fmt(selected.totalAmountReceived),
-      creator: fmt(selected.totalAmountReceived - selected.commissionEarned),
-      agency: fmt(selected.commissionEarned),
-      sub: 'All time',
-    };
-  } else {
-    summary = {
-      usersLabel: 'Status',
-      users: creatorStatusLabel(creatorStatus(selected)),
-      usersSub: creatorName(selected),
-      income: fmt(null),
-      creator: fmt(null),
-      agency: fmt(null),
-      sub: 'No SUBBAL data yet',
-    };
-  }
-
   const netDelta = deltaText(stats.data?.netChangePct ?? null, 'from last month');
 
   return (
     <>
-      <div className="card">
-        <div className="card-head">
-          <h3>All-time performance</h3>
-          <select className="creator-filter-select" value={summaryId} onChange={(e) => setSummaryId(e.target.value)}>
-            <option value="all">All creators</option>
-            {list.map((c) => (
-              <option key={c.id} value={c.id}>{creatorName(c)}</option>
-            ))}
-          </select>
-        </div>
-        <div className="metric-grid">
-          <Metric icon={<Icon.MetricUsers />} color="purple" label={summary.usersLabel} value={creators.loading ? '…' : summary.users} sub={summary.usersSub} />
-          <Metric icon={<Icon.MetricDollar />} color="green" label="Total income" value={summary.income} sub={summary.sub} />
-          <Metric icon={<Icon.MetricUser />} color="blue" label="Total creator commissions" value={summary.creator} sub={summary.sub} />
-          <Metric icon={<Icon.Bank />} color="orange" label="Total agency commission" value={summary.agency} sub={summary.sub} />
-        </div>
-      </div>
+      <AllTimePerformanceCard />
 
       <div className="card">
         <div className="card-head">
@@ -150,6 +97,68 @@ export function AnalyticsTab() {
         </div>
       </div>
     </>
+  );
+}
+
+export function AllTimePerformanceCard() {
+  const { creators } = useBanking();
+  const list = creators.data?.items ?? [];
+  const [summaryId, setSummaryId] = useState('all');
+
+  // all-time summary, optionally for one creator
+  const selected = list.find((c) => String(c.id) === summaryId);
+  let summary: { usersLabel: string; users: string; usersSub: string; income: string; creator: string; agency: string; sub: string };
+  if (!selected) {
+    const t = creatorTotals(list);
+    summary = {
+      usersLabel: 'Total users',
+      users: creators.data ? String(creators.data.total) : '—',
+      usersSub: 'All creators',
+      income: fmt(t.income),
+      creator: fmt(t.creator),
+      agency: fmt(t.agency),
+      sub: 'All time',
+    };
+  } else if (creatorStatus(selected) === 'active') {
+    summary = {
+      usersLabel: 'Activated on',
+      users: fmtDate(selected.submittedOn),
+      usersSub: creatorName(selected),
+      income: fmt(selected.totalAmountReceived),
+      creator: fmt(selected.totalAmountReceived - selected.commissionEarned),
+      agency: fmt(selected.commissionEarned),
+      sub: 'All time',
+    };
+  } else {
+    summary = {
+      usersLabel: 'Status',
+      users: creatorStatusLabel(creatorStatus(selected)),
+      usersSub: creatorName(selected),
+      income: fmt(null),
+      creator: fmt(null),
+      agency: fmt(null),
+      sub: 'No SUBBAL data yet',
+    };
+  }
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h3>All-time performance</h3>
+        <select className="creator-filter-select" value={summaryId} onChange={(e) => setSummaryId(e.target.value)}>
+          <option value="all">All creators</option>
+          {list.map((c) => (
+            <option key={c.id} value={c.id}>{creatorName(c)}</option>
+          ))}
+        </select>
+      </div>
+      <div className="metric-grid">
+        <Metric icon={<Icon.MetricUsers />} color="purple" label={summary.usersLabel} value={creators.loading ? '…' : summary.users} sub={summary.usersSub} />
+        <Metric icon={<Icon.MetricDollar />} color="green" label="Total income" value={summary.income} sub={summary.sub} />
+        <Metric icon={<Icon.MetricUser />} color="blue" label="Total creator commissions" value={summary.creator} sub={summary.sub} />
+        <Metric icon={<Icon.Bank />} color="orange" label="Total agency commission" value={summary.agency} sub={summary.sub} />
+      </div>
+    </div>
   );
 }
 
